@@ -1,29 +1,29 @@
-import json
 from typing import Any
 
-def calculate_metrics(measurement: dict, context: object) -> dict[str, Any]:
-    avg_cpu_util = sum(measurement[f'cpu_percent-{cpu}'] for cpu in range(context['n_cpus'])) / context['n_cpus']
-    percent_network_egress = measurement['net_io_counters_eth0-bytes_sent1'] / measurement['net_io_counters_eth0-bytes_recv1'] * 100
-    percent_memory_caching = (measurement['virtual_memory-cached'] + measurement['virtual_memory-buffers']) / measurement['virtual_memory-total'] * 100
-
-    last_avg_cpu_util = context.get('last_avg_cpu_util', 0)
-    alpha = 0.9
-    avg_cpu_util_smoothed = alpha * last_avg_cpu_util + (1 - alpha) * avg_cpu_util
-
-    context['last_avg_cpu_util'] = avg_cpu_util_smoothed
-
-    result = {
-        'avg-util-cpu-1min': avg_cpu_util_smoothed,
-        'percent-network-egress': percent_network_egress,
-        'percent-memory-caching': percent_memory_caching,
-    }
-
-    return result
 
 def handler(input: dict, context: object) -> dict[str, Any]:
-    measurement = input['metrics']
-    result = calculate_metrics(measurement, context)
 
-    result['additional_info'] = 'some_value'
+    timestamp = input["timestamp"]
+    bytes_sent = input["net_io_counters_eth0-bytes_sent1"]
+    bytes_recv = input["net_io_counters_eth0-bytes_recv1"]
+    total_memory = input["virtual_memory-total"]
+    cached_memory = input["virtual_memory-cached"]
+    buffer_memory = input["virtual_memory-buffers"]
 
-    return result
+    percent_outgoing_traffic = bytes_sent / (bytes_sent + bytes_recv) * 100
+    percent_memory_caching = (cached_memory + buffer_memory) / total_memory * 100
+
+    moving_average_cpu_utilization = []
+    for cpu_utilization in input["cpu_percent-X"]:
+        moving_average_cpu_utilization.append(cpu_utilization)
+    if len(moving_average_cpu_utilization) > 60:
+        moving_average_cpu_utilization.pop(0)
+    moving_average_cpu_utilization = sum(moving_average_cpu_utilization) / len(moving_average_cpu_utilization)
+
+    output_data = {
+        "timestamp": timestamp,
+        "percent_outgoing_traffic": percent_outgoing_traffic,
+        "percent_memory_caching": percent_memory_caching,
+        "moving_average_cpu_utilization": moving_average_cpu_utilization,
+    }
+    return output_data
